@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuentas del Hogar - Control de Finanzas</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js for interactive financial graphs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- jsPDF & jsPDF-AutoTable CDNs for vector PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <!-- Gun.js Real-time Multi-user Sync -->
+  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    .modal-backdrop {
+      background-color: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(4px);
+    }
+    @media print {
+      header, .no-print, button, select, #toastContainer, .modal-backdrop, #pdfExportModal, #deleteModal, #transactionModal, #syncModal {
+        display: none !important;
+      }
+      body {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        font-size: 12px !important;
+      }
+      main {
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .shadow-xs, .shadow-md, .shadow-2xl {
+        box-shadow: none !important;
+      }
+      .border {
+        border-color: #e2e8f0 !important;
+      }
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+  <!-- Main Navigation Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-100 flex-shrink-0">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 leading-tight">Cuentas del Hogar</h1>
+          <p class="text-xs text-slate-500 font-medium">Control de Ingresos, Gastos y Ahorro</p>
+        </div>
+      </div>
+      
+      <!-- Actions: Sync status, Month selector, PDF Export & New movement -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <!-- Multi-user Sync Button -->
+        <button type="button" id="openSyncModalBtn" title="Sincronización Multiusuario" class="flex items-center space-x-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="roomStatusBadge" class="hidden sm:inline">Sincronizado</span>
+        </button>
+
+        <!-- Desktop Month Navigator -->
+        <div class="hidden sm:flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200">
+          <button type="button" id="prevMonthBtn" title="Mes anterior" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+          </button>
+          <span id="currentPeriodLabel" class="px-3 text-xs font-semibold text-slate-700 min-w-[125px] text-center capitalize">Octubre 2026</span>
+          <button type="button" id="nextMonthBtn" title="Mes siguiente" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+          </button>
+        </div>
+
+        <!-- Download Monthly PDF Report Button -->
+        <button type="button" id="downloadPdfBtn" title="Descargar informe mensual en PDF" class="flex items-center space-x-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shadow-md shadow-rose-100">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          <span>PDF</span>
+        </button>
+
+        <!-- New Transaction Button -->
+        <button type="button" id="openNewModalBtn" class="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition shadow-md shadow-indigo-100">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+          <span class="hidden sm:inline">Nuevo Movimiento</span>
+          <span class="sm:hidden">Nuevo</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Mobile Month Navigator Bar -->
+    <div class="flex sm:hidden items-center justify-between bg-white rounded-xl p-2 border border-slate-200 shadow-xs">
+      <button type="button" id="prevMonthBtnMobile" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+      </button>
+      <span id="currentPeriodLabelMobile" class="text-sm font-bold text-slate-800 capitalize">Octubre 2026</span>
+      <button type="button" id="nextMonthBtnMobile" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+      </button>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
+      <!-- Ingresos Card -->
+      <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">Ingresos Totales</span>
+          <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12" /></svg>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <div id="kpiIncome" class="text-2xl sm:text-3xl font-extrabold text-slate-900">0,00 €</div>
+          <p id="kpiIncomeCount" class="text-xs text-slate-500 font-medium">0 entradas registradas</p>
+        </div>
+      </div>
+
+      <!-- Gastos Card -->
+      <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full">Gastos Totales</span>
+          <div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6" /></svg>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <div id="kpiExpense" class="text-2xl sm:text-3xl font-extrabold text-slate-900">0,00 €</div>
+          <p id="kpiExpenseCount" class="text-xs text-slate-500 font-medium">0 compras o pagos</p>
+        </div>
+      </div>
+
+      <!-- Ahorro / Balance Card -->
+      <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition">
+        <div class="flex items-center justify-between mb-3">
+          <span id="savingsBadge" class="text-xs font-semibold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">Ahorro del Mes</span>
+          <div id="savingsIconWrap" class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <div id="kpiBalance" class="text-2xl sm:text-3xl font-extrabold text-slate-900">0,00 €</div>
+          <div class="flex items-center text-xs font-medium text-slate-500 space-x-1.5">
+            <span>Tasa de ahorro:</span>
+            <span id="savingsRate" class="font-bold text-slate-700">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Category Breakdown (Donut Chart) -->
+      <div class="lg:col-span-5 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Distribución de Gastos</h2>
+            <p class="text-xs text-slate-500">¿En qué se gasta más este mes?</p>
+          </div>
+          <span class="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg" id="chartTotalBadge">Total: 0 €</span>
+        </div>
+        
+        <div class="relative flex-1 min-h-[260px] flex items-center justify-center">
+          <canvas id="categoryDonutChart"></canvas>
+          <div id="donutEmptyState" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center p-4">
+            <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mb-2">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+            </div>
+            <p class="text-sm font-semibold text-slate-600">Sin gastos este mes</p>
+            <p class="text-xs text-slate-400">Añade movimientos de gasto para ver el reparto</p>
+          </div>
+        </div>
+
+        <div id="topCategoriesContainer" class="mt-4 pt-4 border-t border-slate-100 space-y-2.5 text-xs">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Monthly Trend / Comparative Bar Chart -->
+      <div class="lg:col-span-7 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Evolución Anual (Ingresos vs Gastos)</h2>
+            <p class="text-xs text-slate-500">Histórico de ahorro a lo largo de los meses</p>
+          </div>
+          <div class="flex items-center space-x-3 text-xs">
+            <span class="flex items-center space-x-1.5"><span class="w-3 h-3 rounded-md bg-emerald-500 inline-block"></span><span class="text-slate-600 font-medium">Ingresos</span></span>
+            <span class="flex items-center space-x-1.5"><span class="w-3 h-3 rounded-md bg-rose-500 inline-block"></span><span class="text-slate-600 font-medium">Gastos</span></span>
+          </div>
+        </div>
+
+        <div class="relative flex-1 min-h-[260px]">
+          <canvas id="monthlyTrendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transactions List Container -->
+    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div class="p-5 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">Movimientos Registrados</h2>
+          <p class="text-xs text-slate-500">Consulta, filtra, edita o elimina los apuntes del mes</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div class="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-semibold text-slate-600">
+            <button type="button" id="filterAll" class="filter-type-btn px-3 py-1.5 rounded-lg bg-white shadow-xs text-indigo-600">Todos</button>
+            <button type="button" id="filterIncome" class="filter-type-btn px-3 py-1.5 rounded-lg hover:text-slate-900">Ingresos</button>
+            <button type="button" id="filterExpense" class="filter-type-btn px-3 py-1.5 rounded-lg hover:text-slate-900">Gastos</button>
+          </div>
+
+          <select id="categoryFilterSelect" class="bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-medium rounded-xl px-3 py-2 border-0 focus:ring-2 focus:ring-indigo-500 outline-none transition cursor-pointer">
+            <option value="all">Todas las categorías</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-600">
+          <thead class="bg-slate-50/80 text-xs uppercase font-semibold text-slate-400 border-b border-slate-100">
+            <tr>
+              <th scope="col" class="py-3.5 px-4 sm:px-6">Concepto / Categoría</th>
+              <th scope="col" class="py-3.5 px-4 hidden sm:table-cell">Fecha</th>
+              <th scope="col" class="py-3.5 px-4 text-right">Importe</th>
+              <th scope="col" class="py-3.5 px-4 text-center w-24">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="transactionsTableBody" class="divide-y divide-slate-100">
+            <!-- Populated dynamically by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div id="tableEmptyState" class="hidden py-12 flex flex-col items-center justify-center text-center px-4">
+        <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        </div>
+        <h3 class="text-sm font-semibold text-slate-800">No hay movimientos en este mes</h3>
+        <p class="text-xs text-slate-400 mt-1 max-w-sm">No encontramos ningún movimiento para los filtros o el mes seleccionado. Comienza agregando uno nuevo.</p>
+        <button type="button" id="addFirstTransactionBtn" class="mt-4 inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2.5 rounded-xl transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+          <span>Añadir primer movimiento</span>
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Transaction Modal (Create / Edit) -->
+  <div id="transactionModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden opacity-0 transition-opacity duration-200">
+    <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden transform scale-95 transition-transform duration-200">
+      
+      <div class="px-6 pt-6 pb-4 flex items-center justify-between border-b border-slate-100">
+        <div>
+          <h3 id="modalTitle" class="text-lg font-bold text-slate-900">Registrar Movimiento</h3>
+          <p class="text-xs text-slate-500">Introduce los datos del gasto o ingreso</p>
+        </div>
+        <button type="button" id="closeModalBtn" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <form id="transactionForm" class="p-6 space-y-4">
+        <input type="hidden" id="editTransactionId" value="">
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Tipo de Operación</label>
+          <div class="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
+            <button type="button" id="typeGastoBtn" class="py-2.5 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 bg-rose-500 text-white shadow-xs transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6" /></svg>
+              <span>Gasto</span>
+            </button>
+            <button type="button" id="typeIngresoBtn" class="py-2.5 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12" /></svg>
+              <span>Ingreso</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label for="conceptInput" class="block text-xs font-semibold text-slate-700 mb-1">Concepto o Descripción</label>
+          <input type="text" id="conceptInput" required placeholder="Ej. Compra Mercadona, Cuota luz, Nómina" 
+                 class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition placeholder:text-slate-400">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="amountInput" class="block text-xs font-semibold text-slate-700 mb-1">Importe (€)</label>
+            <div class="relative">
+              <input type="number" id="amountInput" step="0.01" min="0.01" required placeholder="0.00"
+                     class="w-full pl-3.5 pr-8 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition placeholder:text-slate-400">
+              <span class="absolute right-3 top-2.5 text-slate-400 font-bold text-sm">€</span>
+            </div>
+          </div>
+          <div>
+            <label for="dateInput" class="block text-xs font-semibold text-slate-700 mb-1">Fecha</label>
+            <input type="date" id="dateInput" required
+                   class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
+          </div>
+        </div>
+
+        <div>
+          <label for="categoryInput" class="block text-xs font-semibold text-slate-700 mb-1">Categoría</label>
+          <select id="categoryInput" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition bg-white cursor-pointer">
+          </select>
+          <div id="categoryHintContainer" class="mt-2 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl hidden">
+            <p id="categoryHint" class="text-[11px] leading-relaxed text-slate-600"></p>
+          </div>
+        </div>
+
+        <div>
+          <label for="notesInput" class="block text-xs font-semibold text-slate-700 mb-1">Notas u observaciones (opcional)</label>
+          <input type="text" id="notesInput" placeholder="Ej. Factura dividida, ticket guardado" 
+                 class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition placeholder:text-slate-400">
+        </div>
+
+        <div class="pt-2 flex items-center justify-end space-x-2">
+          <button type="button" id="cancelModalBtn" class="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+            Cancelar
+          </button>
+          <button type="submit" id="saveTransactionBtn" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-xs font-semibold text-white shadow-md shadow-indigo-100 transition">
+            Guardar Movimiento
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Custom Modal -->
+  <div id="deleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden opacity-0 transition-opacity duration-200">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center transform scale-95 transition-transform duration-200">
+      <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900">¿Eliminar este movimiento?</h3>
+      <p id="deleteItemDescription" class="text-xs text-slate-500 mt-1 mb-5">Esta acción eliminará el registro.</p>
+      <div class="flex items-center justify-center space-x-2">
+        <button type="button" id="cancelDeleteBtn" class="w-1/2 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">Cancelar</button>
+        <button type="button" id="confirmDeleteBtn" class="w-1/2 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-semibold text-white transition shadow-sm">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF Export Options Modal -->
+  <div id="pdfExportModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden opacity-0 transition-opacity duration-200">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 transform scale-95 transition-transform duration-200">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900 leading-snug">Descargar Informe del Mes</h3>
+            <p id="pdfModalPeriodSubtitle" class="text-xs text-slate-500 font-medium">Octubre 2026</p>
+          </div>
+        </div>
+        <button type="button" id="closePdfModalBtn" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <button type="button" id="btnExportDirectPdf" class="w-full text-left p-4 rounded-2xl border-2 border-indigo-100 hover:border-indigo-500 hover:bg-indigo-50/40 transition group flex items-start space-x-3.5">
+          <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5 group-hover:scale-105 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-900 group-hover:text-indigo-700">Descargar archivo .PDF</span>
+              <span class="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Recomendado</span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Descarga directamente el documento PDF formateado con portada, gráficos y tabla.</p>
+          </div>
+        </button>
+
+        <button type="button" id="btnExportPrintPdf" class="w-full text-left p-4 rounded-2xl border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition group flex items-start space-x-3.5">
+          <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5 group-hover:scale-105 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <span class="text-xs font-bold text-slate-800">Guardar como PDF (Nativo del Navegador)</span>
+            <p class="text-xs text-slate-500 mt-0.5">Abre el diálogo de impresión configurado en A4 para guardar en PDF sin bloqueos.</p>
+          </div>
+        </button>
+      </div>
+
+      <div class="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+        <button type="button" id="closePdfModalFooterBtn" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-user Sync Modal -->
+  <div id="syncModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden opacity-0 transition-opacity duration-200">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 transform scale-95 transition-transform duration-200">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 43a8 8 0 100-16 8 8 0 000 16zM21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900 leading-snug">Sincronización Multiusuario</h3>
+            <p id="syncLiveText" class="text-xs text-slate-500 font-medium">Conectado en tiempo real</p>
+          </div>
+        </div>
+        <button type="button" id="closeSyncModalBtn" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label for="roomCodeInput" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Código de Sala Compartida</label>
+          <div class="flex space-x-2">
+            <input type="text" id="roomCodeInput" placeholder="Ej: mi-hogar-2026" 
+                   class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 outline-none transition">
+            <button type="button" id="changeRoomBtn" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition">
+              Unirse
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Usa la misma clave en ambos teléfonos para ver los mismos datos al instante.</p>
+        </div>
+
+        <div class="pt-2 border-t border-slate-100">
+          <button type="button" id="shareWhatsAppBtn" class="w-full py-3 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 flex items-center justify-center space-x-2 transition">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-1.157 4.228 4.301-1.127z"/></svg>
+            <span>Copiar Enlace para Compartir por WhatsApp</span>
+          </button>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 space-y-2">
+          <p class="text-xs font-bold text-slate-700">Copia de Seguridad Manual</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" id="downloadBackupBtn" class="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition">
+              Descargar JSON
+            </button>
+            <label class="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl text-center cursor-pointer transition">
+              <span>Restaurar JSON</span>
+              <input type="file" id="restoreBackupInput" accept=".json" class="hidden">
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+        <button type="button" id="closeSyncModalFooterBtn" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <script>
+    // Safe Event Listener Helper
+    function safeOn(id, event, handler) {
+      const el = typeof id === 'string' ? document.getElementById(id) : id;
+      if (el) {
+        el.addEventListener(event, handler);
+      }
+    }
+
+    // EXACT Categories as requested
+    const CATEGORIES = {
+      expense: [
+        { id: 'hipoteca', name: 'HIPOTECA', color: '#6366f1', icon: '🏠', desc: 'Cuota mensual del préstamo hipotecario' },
+        { id: 'gastos_casa', name: 'Gastos casa', color: '#0ea5e9', icon: '🏡', desc: 'Luz, Telefonía, GAS, IBI, ASTOSAM-AGUA, Seguro de casa, Tasa de basuras' },
+        { id: 'gastos_coche', name: 'Gastos Coche', color: '#f59e0b', icon: '🚗', desc: 'Seguro Coche, gasolina y mantenimiento' },
+        { id: 'educacion_formacion', name: 'Gastos Educación y formación', color: '#ec4899', icon: '🎓', desc: 'LOGOPEDA PAULA, COLEGIO: Gimnasia RÍTMICA, FÚTBOL JZS, teatro, campamentos, libros y papelería' },
+        { id: 'pension_seguros', name: 'Pensión y seguros', color: '#8b5cf6', icon: '🛡️', desc: 'Traspaso PLAN PENSIONES y seguro de vida' },
+        { id: 'ocio_entretenimiento', name: 'Ocio & Entretenimiento', color: '#f43f5e', icon: '🍿', desc: 'RESTAURANTES y salidas, Netflix, Prime' },
+        { id: 'gastos_bancarios', name: 'Gastos bancarios', color: '#64748b', icon: '💳', desc: 'Comisiones bancarias, mantenimiento de cuenta y tarjetas' },
+        { id: 'supermercados_comida', name: 'Supermercados y Comida', color: '#10b981', icon: '🛒', desc: 'Compra semanal, alimentos y productos de alimentación' },
+        { id: 'ropa_calzado', name: 'Ropa y calzado', color: '#f97316', icon: '👕', desc: 'Ropa, calzado y complementos' },
+        { id: 'salud_farmacia', name: 'Salud y Farmacia', color: '#14b8a6', icon: '💊', desc: 'Farmacia, medicamentos y consultas médicas' },
+        { id: 'varios', name: 'Varios', color: '#94a3b8', icon: '📦', desc: 'Otros gastos generales o imprevistos del hogar' }
+      ],
+      income: [
+        { id: 'nomina', name: 'NÓMINA', color: '#10b981', icon: '💼' },
+        { id: 'alquiler_parking', name: 'Alquiler PARKING', color: '#3b82f6', icon: '🅿️' },
+        { id: 'ayudas_paula', name: 'AYUDAS PAULA', color: '#ec4899', icon: '👶' },
+        { id: 'devoluciones', name: 'DEVOLUCIONES', color: '#f59e0b', icon: '🔄' },
+        { id: 'ana_hipoteca', name: 'ANA HIPOTECA', color: '#8b5cf6', icon: '🏠' }
+      ]
+    };
+
+    const MONTH_NAMES = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    // Current State
+    const now = new Date();
+    let selectedYear = now.getFullYear();
+    let selectedMonth = now.getMonth();
+    let currentModalType = 'expense';
+    let currentFilterType = 'all';
+    let currentFilterCategory = 'all';
+    let itemPendingDeletionId = null;
+    let donutChartInstance = null;
+    let trendChartInstance = null;
+
+    // Room Sync setup
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentRoomCode = urlParams.get('sala') || localStorage.getItem('cuentas_hogar_room') || 'hogar-default';
+
+    const STORAGE_KEY = 'cuentas_hogar_datos_v3';
+
+    const SEED_TRANSACTIONS = [
+      { id: 'seed-1', type: 'income', concept: 'Nómina', amount: 2450.00, category: 'nomina', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`, notes: 'Ingreso mensual' },
+      { id: 'seed-2', type: 'income', concept: 'Alquiler Parking', amount: 90.00, category: 'alquiler_parking', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-03`, notes: 'Cochera' },
+      { id: 'seed-3', type: 'income', concept: 'Ayudas Paula', amount: 200.00, category: 'ayudas_paula', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-04`, notes: 'Consejería' },
+      { id: 'seed-4', type: 'income', concept: 'Ana Hipoteca', amount: 340.00, category: 'ana_hipoteca', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-05`, notes: 'Parte proporcional' },
+      { id: 'seed-5', type: 'expense', concept: 'Cuota Préstamo Hipotecario', amount: 680.00, category: 'hipoteca', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-02`, notes: 'Mensualidad fija' },
+      { id: 'seed-6', type: 'expense', concept: 'Factura Electricidad y Gas', amount: 95.50, category: 'gastos_casa', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-03`, notes: 'Luz y Gas' },
+      { id: 'seed-7', type: 'expense', concept: 'Recibo Agua ASTOSAM', amount: 32.10, category: 'gastos_casa', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-04`, notes: 'Agua' },
+      { id: 'seed-8', type: 'expense', concept: 'Gasolina Repsol', amount: 70.00, category: 'gastos_coche', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-06`, notes: 'Depósito coche' },
+      { id: 'seed-9', type: 'expense', concept: 'Sesión Logopeda Paula', amount: 120.00, category: 'educacion_formacion', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-05`, notes: 'Terapia' },
+      { id: 'seed-10', type: 'expense', concept: 'Colegio: Fútbol JZS y Rítmica', amount: 75.00, category: 'educacion_formacion', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-06`, notes: 'Actividades escolares' },
+      { id: 'seed-11', type: 'expense', concept: 'Traspaso Plan Pensiones', amount: 150.00, category: 'pension_seguros', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-04`, notes: 'Aportación' },
+      { id: 'seed-12', type: 'expense', concept: 'Compra Supermercado Semanal', amount: 165.40, category: 'supermercados_comida', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-07`, notes: 'Alimentación' },
+      { id: 'seed-13', type: 'expense', concept: 'Cena Restaurante y Salida', amount: 64.00, category: 'ocio_entretenimiento', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-08`, notes: 'Fin de semana' },
+      { id: 'seed-14', type: 'expense', concept: 'Farmacia medicamentos', amount: 24.50, category: 'salud_farmacia', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-08`, notes: 'Botiquín' }
+    ];
+
+    let transactions = [];
+
+    function loadTransactions() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          transactions = JSON.parse(stored);
+        } else {
+          transactions = SEED_TRANSACTIONS;
+          saveTransactions(false);
+        }
+      } catch (e) {
+        console.error('Error cargando almacenamiento:', e);
+        transactions = SEED_TRANSACTIONS;
+      }
+    }
+
+    function saveTransactions(broadcast = true) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+      } catch (e) {
+        console.error('Error guardando en almacenamiento:', e);
+      }
+      if (broadcast) {
+        broadcastToCloud();
+      }
+    }
+
+    // --- GUN.JS REAL-TIME SYNC SETUP ---
+    let gun = null;
+    let gunNode = null;
+
+    function initGunSync() {
+      try {
+        if (typeof Gun !== 'undefined') {
+          gun = Gun({
+            peers: [
+              'https://gun-manhattan.herokuapp.com/gun',
+              'https://peer.wallie.io/gun'
+            ],
+            localStorage: false
+          });
+          bindGunRoom(currentRoomCode);
+        }
+      } catch (e) {
+        console.warn('Gun sync no disponible o en modo sin conexión:', e);
+      }
+    }
+
+    function bindGunRoom(roomCode) {
+      if (!gun) return;
+      if (gunNode) {
+        try { gunNode.off(); } catch(e){}
+      }
+
+      currentRoomCode = roomCode;
+      localStorage.setItem('cuentas_hogar_room', currentRoomCode);
+      const roomInput = document.getElementById('roomCodeInput');
+      if (roomInput) roomInput.value = currentRoomCode;
+
+      gunNode = gun.get('cuentas_hogar_v4').get(currentRoomCode);
+
+      // Listen for updates from other device
+      gunNode.on((payload) => {
+        if (!payload || !payload.data) return;
+        try {
+          const remoteList = JSON.parse(payload.data);
+          if (Array.isArray(remoteList) && remoteList.length > 0) {
+            const currentStr = JSON.stringify(transactions);
+            const remoteStr = JSON.stringify(remoteList);
+            if (currentStr !== remoteStr) {
+              transactions = remoteList;
+              localStorage.setItem(STORAGE_KEY, remoteStr);
+              refreshApp();
+              showToast('Datos actualizados en tiempo real', 'info');
+              updateRoomStatus('Sincronizado');
+            }
+          }
+        } catch(err) {
+          console.warn('Error parseando datos remotos:', err);
+        }
+      });
+    }
+
+    function broadcastToCloud() {
+      if (!gunNode) return;
+      updateRoomStatus('Transmitiendo...');
+      try {
+        gunNode.put({
+          data: JSON.stringify(transactions),
+          timestamp: Date.now()
+        }, (ack) => {
+          updateRoomStatus('Sincronizado');
+        });
+      } catch (e) {
+        console.warn('Error emitiendo a la nube:', e);
+      }
+    }
+
+    function updateRoomStatus(text) {
+      const badge = document.getElementById('roomStatusBadge');
+      if (badge) badge.textContent = text;
+      const liveText = document.getElementById('syncLiveText');
+      if (liveText) liveText.textContent = text;
+    }
+
+    function formatCurrency(amount) {
+      return new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(amount);
+    }
+
+    function formatDateSpanish(dateStr) {
+      if (!dateStr) return '';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return dateStr;
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+
+      const bgStyle = type === 'error' 
+        ? 'bg-rose-600 text-white' 
+        : type === 'info' 
+          ? 'bg-indigo-600 text-white' 
+          : 'bg-emerald-600 text-white';
+
+      toast.className = `${bgStyle} px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-2 text-xs font-semibold pointer-events-auto transition-all duration-300 transform translate-y-2 opacity-0`;
+      toast.innerHTML = `
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${type === 'error' ? 'M6 18L18 6M6 6l12 12' : 'M5 13l4 4L19 7'}" />
+        </svg>
+        <span>${message}</span>
+      `;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    function getCategoryMeta(type, catId) {
+      const list = CATEGORIES[type] || [];
+      const found = list.find(c => c.id === catId);
+      if (found) return found;
+      const inExp = CATEGORIES.expense.find(c => c.id === catId);
+      if (inExp) return inExp;
+      const inInc = CATEGORIES.income.find(c => c.id === catId);
+      if (inInc) return inInc;
+      return { id: catId, name: catId, color: '#94a3b8', icon: '🏷️', desc: '' };
+    }
+
+    function updateCategoryHint(type, catId) {
+      const hintContainer = document.getElementById('categoryHintContainer');
+      const hintText = document.getElementById('categoryHint');
+      if (!hintContainer || !hintText) return;
+
+      if (type === 'expense') {
+        const meta = getCategoryMeta('expense', catId);
+        if (meta && meta.desc) {
+          hintText.innerHTML = `<strong class="text-indigo-600 font-bold">Incluye:</strong> ${meta.desc}`;
+          hintContainer.classList.remove('hidden');
+          return;
+        }
+      }
+      hintContainer.classList.add('hidden');
+    }
+
+    function populateModalCategories(type, selectedCatId = null) {
+      const select = document.getElementById('categoryInput');
+      if (!select) return;
+      select.innerHTML = '';
+
+      const list = CATEGORIES[type] || [];
+      list.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat.id;
+        opt.textContent = `${cat.icon} ${cat.name}`;
+        select.appendChild(opt);
+      });
+
+      if (selectedCatId && list.some(c => c.id === selectedCatId)) {
+        select.value = selectedCatId;
+      } else if (list.length > 0) {
+        select.value = list[0].id;
+      }
+
+      updateCategoryHint(type, select.value);
+    }
+
+    function updateCategoryFilterDropdown() {
+      const select = document.getElementById('categoryFilterSelect');
+      if (!select) return;
+      const currentSelected = select.value;
+      select.innerHTML = '<option value="all">Todas las categorías</option>';
+
+      const allCats = [...CATEGORIES.expense, ...CATEGORIES.income];
+      const usedCategoryIds = new Set(transactions.map(t => t.category));
+
+      allCats.forEach(cat => {
+        if (usedCategoryIds.has(cat.id)) {
+          const opt = document.createElement('option');
+          opt.value = cat.id;
+          opt.textContent = `${cat.icon} ${cat.name}`;
+          select.appendChild(opt);
+        }
+      });
+
+      if (usedCategoryIds.has(currentSelected)) {
+        select.value = currentSelected;
+      } else {
+        select.value = 'all';
+        currentFilterCategory = 'all';
+      }
+    }
+
+    function getTransactionsForMonth(year, monthIndex) {
+      return transactions.filter(t => {
+        if (!t.date) return false;
+        const [y, m] = t.date.split('-').map(Number);
+        return y === year && (m - 1) === monthIndex;
+      });
+    }
+
+    function updatePeriodLabels() {
+      const text = `${MONTH_NAMES[selectedMonth]} ${selectedYear}`;
+      const p1 = document.getElementById('currentPeriodLabel');
+      const p2 = document.getElementById('currentPeriodLabelMobile');
+      if (p1) p1.textContent = text;
+      if (p2) p2.textContent = text;
+    }
+
+    function updateKPIs(monthTransactions) {
+      let totalIncome = 0;
+      let totalExpense = 0;
+      let incomeCount = 0;
+      let expenseCount = 0;
+
+      monthTransactions.forEach(t => {
+        if (t.type === 'income') {
+          totalIncome += parseFloat(t.amount || 0);
+          incomeCount++;
+        } else {
+          totalExpense += parseFloat(t.amount || 0);
+          expenseCount++;
+        }
+      });
+
+      const balance = totalIncome - totalExpense;
+      const savingsRate = totalIncome > 0 ? Math.round((balance / totalIncome) * 100) : 0;
+
+      const incEl = document.getElementById('kpiIncome');
+      const incCountEl = document.getElementById('kpiIncomeCount');
+      const expEl = document.getElementById('kpiExpense');
+      const expCountEl = document.getElementById('kpiExpenseCount');
+
+      if (incEl) incEl.textContent = formatCurrency(totalIncome);
+      if (incCountEl) incCountEl.textContent = `${incomeCount} entrada${incomeCount === 1 ? '' : 's'} registrada${incomeCount === 1 ? '' : 's'}`;
+
+      if (expEl) expEl.textContent = formatCurrency(totalExpense);
+      if (expCountEl) expCountEl.textContent = `${expenseCount} compra${expenseCount === 1 ? '' : 's'} o pago${expenseCount === 1 ? '' : 's'}`;
+
+      const kpiBalanceEl = document.getElementById('kpiBalance');
+      const savingsBadgeEl = document.getElementById('savingsBadge');
+      const savingsIconWrapEl = document.getElementById('savingsIconWrap');
+      const savingsRateEl = document.getElementById('savingsRate');
+
+      if (!kpiBalanceEl) return;
+      kpiBalanceEl.textContent = formatCurrency(balance);
+
+      if (balance >= 0) {
+        kpiBalanceEl.className = 'text-2xl sm:text-3xl font-extrabold text-emerald-600';
+        if (savingsBadgeEl) {
+          savingsBadgeEl.className = 'text-xs font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full';
+          savingsBadgeEl.textContent = 'Ahorro Positivo';
+        }
+        if (savingsIconWrapEl) {
+          savingsIconWrapEl.className = 'w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center';
+        }
+        if (savingsRateEl) {
+          savingsRateEl.className = 'font-bold text-emerald-600';
+          savingsRateEl.textContent = `${savingsRate}% del ingreso`;
+        }
+      } else {
+        kpiBalanceEl.className = 'text-2xl sm:text-3xl font-extrabold text-rose-600';
+        if (savingsBadgeEl) {
+          savingsBadgeEl.className = 'text-xs font-semibold uppercase tracking-wider text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full';
+          savingsBadgeEl.textContent = 'Déficit del Mes';
+        }
+        if (savingsIconWrapEl) {
+          savingsIconWrapEl.className = 'w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center';
+        }
+        if (savingsRateEl) {
+          savingsRateEl.className = 'font-bold text-rose-600';
+          savingsRateEl.textContent = 'Gastos superan ingresos';
+        }
+      }
+    }
+
+    function renderCategoryCharts(monthTransactions) {
+      const expenseTransactions = monthTransactions.filter(t => t.type === 'expense');
+      const donutEmpty = document.getElementById('donutEmptyState');
+      const totalBadge = document.getElementById('chartTotalBadge');
+      const topContainer = document.getElementById('topCategoriesContainer');
+      const chartCanvas = document.getElementById('categoryDonutChart');
+
+      if (!chartCanvas) return;
+
+      const categoryTotals = {};
+      let totalExpense = 0;
+
+      expenseTransactions.forEach(t => {
+        const amt = parseFloat(t.amount || 0);
+        totalExpense += amt;
+        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + amt;
+      });
+
+      if (totalBadge) totalBadge.textContent = `Total: ${formatCurrency(totalExpense)}`;
+
+      const sortedCategories = Object.entries(categoryTotals)
+        .sort((a, b) => b[1] - a[1]);
+
+      const labels = [];
+      const dataValues = [];
+      const bgColors = [];
+
+      sortedCategories.forEach(([catId, amount]) => {
+        const meta = getCategoryMeta('expense', catId);
+        labels.push(`${meta.icon} ${meta.name}`);
+        dataValues.push(amount);
+        bgColors.push(meta.color);
+      });
+
+      const ctx = chartCanvas.getContext('2d');
+
+      if (sortedCategories.length === 0) {
+        if (donutEmpty) donutEmpty.classList.remove('hidden');
+        if (donutChartInstance) {
+          donutChartInstance.destroy();
+          donutChartInstance = null;
+        }
+        if (topContainer) topContainer.innerHTML = '';
+        return;
+      }
+
+      if (donutEmpty) donutEmpty.classList.add('hidden');
+
+      if (donutChartInstance) {
+        donutChartInstance.destroy();
+      }
+
+      donutChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: dataValues,
+            backgroundColor: bgColors,
+            borderWidth: 3,
+            borderColor: '#ffffff',
+            hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const val = context.raw || 0;
+                  const pct = totalExpense > 0 ? ((val / totalExpense) * 100).toFixed(1) : 0;
+                  return ` ${context.label}: ${formatCurrency(val)} (${pct}%)`;
+                }
+              }
+            }
+          },
+          cutout: '72%'
+        }
+      });
+
+      if (!topContainer) return;
+      topContainer.innerHTML = '';
+      sortedCategories.slice(0, 4).forEach(([catId, amount]) => {
+        const meta = getCategoryMeta('expense', catId);
+        const percent = totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0;
+
+        const row = document.createElement('div');
+        row.className = 'space-y-1';
+        row.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-slate-700 flex items-center space-x-1.5 truncate max-w-[200px]">
+              <span>${meta.icon}</span>
+              <span class="truncate">${meta.name}</span>
+            </span>
+            <div class="space-x-1 text-right">
+              <span class="font-bold text-slate-800">${formatCurrency(amount)}</span>
+              <span class="text-slate-400">(${percent}%)</span>
+            </div>
+          </div>
+          <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div class="h-1.5 rounded-full" style="width: ${percent}%; background-color: ${meta.color}"></div>
+          </div>
+        `;
+        topContainer.appendChild(row);
+      });
+    }
+
+    function renderAnnualTrendChart() {
+      const canvas = document.getElementById('monthlyTrendChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const labels = [];
+      const incomes = [];
+      const expenses = [];
+
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(selectedYear, selectedMonth - i, 1);
+        const mIdx = d.getMonth();
+        const y = d.getFullYear();
+        labels.push(`${MONTH_NAMES[mIdx].substring(0, 3)} ${y === selectedYear ? '' : "'" + y.toString().slice(-2)}`);
+
+        const mTransactions = getTransactionsForMonth(y, mIdx);
+        let inc = 0;
+        let exp = 0;
+        mTransactions.forEach(t => {
+          if (t.type === 'income') inc += parseFloat(t.amount || 0);
+          else exp += parseFloat(t.amount || 0);
+        });
+        incomes.push(inc);
+        expenses.push(exp);
+      }
+
+      if (trendChartInstance) {
+        trendChartInstance.destroy();
+      }
+
+      trendChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Ingresos',
+              data: incomes,
+              backgroundColor: '#10b981',
+              borderRadius: 6,
+              borderSkipped: false
+            },
+            {
+              label: 'Gastos',
+              data: expenses,
+              backgroundColor: '#f43f5e',
+              borderRadius: 6,
+              borderSkipped: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.dataset.label}: ${formatCurrency(context.raw)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 11, family: 'Plus Jakarta Sans' } }
+            },
+            y: {
+              grid: { color: '#f1f5f9' },
+              ticks: {
+                callback: function(value) {
+                  return value >= 1000 ? (value / 1000) + 'k €' : value + ' €';
+                },
+                font: { size: 10, family: 'Plus Jakarta Sans' }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderTable(monthTransactions) {
+      const tbody = document.getElementById('transactionsTableBody');
+      const emptyState = document.getElementById('tableEmptyState');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      let filtered = [...monthTransactions];
+      if (currentFilterType !== 'all') {
+        filtered = filtered.filter(t => t.type === currentFilterType);
+      }
+
+      if (currentFilterCategory !== 'all') {
+        filtered = filtered.filter(t => t.category === currentFilterCategory);
+      }
+
+      filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      if (filtered.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        return;
+      }
+
+      if (emptyState) emptyState.classList.add('hidden');
+
+      filtered.forEach(tx => {
+        const meta = getCategoryMeta(tx.type, tx.category);
+        const isIncome = tx.type === 'income';
+        const sign = isIncome ? '+' : '-';
+        const amountClass = isIncome ? 'text-emerald-600 font-bold' : 'text-slate-900 font-bold';
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/80 transition group';
+        tr.innerHTML = `
+          <td class="py-3.5 px-4 sm:px-6">
+            <div class="flex items-center space-x-3">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style="background-color: ${meta.color}15">
+                ${meta.icon}
+              </div>
+              <div class="min-w-0">
+                <p class="font-semibold text-slate-800 text-sm truncate">${tx.concept}</p>
+                <div class="flex items-center space-x-2 text-xs text-slate-400 mt-0.5">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium text-[11px]" style="background-color: ${meta.color}15; color: ${meta.color}">
+                    ${meta.name}
+                  </span>
+                  ${tx.notes ? `<span class="hidden md:inline text-slate-400">• ${tx.notes}</span>` : ''}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3.5 px-4 hidden sm:table-cell text-xs text-slate-500 whitespace-nowrap">
+            ${formatDateSpanish(tx.date)}
+          </td>
+          <td class="py-3.5 px-4 text-right whitespace-nowrap">
+            <span class="${amountClass} text-sm">${sign} ${formatCurrency(parseFloat(tx.amount))}</span>
+          </td>
+          <td class="py-3.5 px-4 text-center whitespace-nowrap">
+            <div class="flex items-center justify-center space-x-1">
+              <button type="button" onclick="editTransaction('${tx.id}')" title="Editar" class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+              </button>
+              <button type="button" onclick="promptDeleteTransaction('${tx.id}')" title="Eliminar" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function refreshApp() {
+      updatePeriodLabels();
+      const currentMonthTx = getTransactionsForMonth(selectedYear, selectedMonth);
+      updateKPIs(currentMonthTx);
+      renderCategoryCharts(currentMonthTx);
+      renderAnnualTrendChart();
+      updateCategoryFilterDropdown();
+      renderTable(currentMonthTx);
+    }
+
+    const modal = document.getElementById('transactionModal');
+    const modalContent = modal ? modal.querySelector('div') : null;
+
+    function openModal(editId = null) {
+      if (!modal) return;
+      const form = document.getElementById('transactionForm');
+      if (form) form.reset();
+
+      if (editId) {
+        const item = transactions.find(t => t.id === editId);
+        if (!item) return;
+        document.getElementById('modalTitle').textContent = 'Editar Movimiento';
+        document.getElementById('editTransactionId').value = item.id;
+        document.getElementById('conceptInput').value = item.concept;
+        document.getElementById('amountInput').value = item.amount;
+        document.getElementById('dateInput').value = item.date;
+        document.getElementById('notesInput').value = item.notes || '';
+        setModalType(item.type);
+        populateModalCategories(item.type, item.category);
+      } else {
+        document.getElementById('modalTitle').textContent = 'Registrar Movimiento';
+        document.getElementById('editTransactionId').value = '';
+        const today = new Date();
+        const defaultDate = (today.getFullYear() === selectedYear && today.getMonth() === selectedMonth)
+          ? today.toISOString().split('T')[0]
+          : `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+        document.getElementById('dateInput').value = defaultDate;
+        setModalType('expense');
+        populateModalCategories('expense');
+      }
+
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        if (modalContent) modalContent.classList.remove('scale-95');
+      }, 10);
+    }
+
+    function closeModal() {
+      if (!modal) return;
+      modal.classList.add('opacity-0');
+      if (modalContent) modalContent.classList.add('scale-95');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+      }, 200);
+    }
+
+    function setModalType(type) {
+      currentModalType = type;
+      const gastoBtn = document.getElementById('typeGastoBtn');
+      const ingresoBtn = document.getElementById('typeIngresoBtn');
+
+      if (type === 'expense') {
+        if (gastoBtn) gastoBtn.className = 'py-2.5 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 bg-rose-500 text-white shadow-xs transition';
+        if (ingresoBtn) ingresoBtn.className = 'py-2.5 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900 transition';
+      } else {
+        if (ingresoBtn) ingresoBtn.className = 'py-2.5 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 bg-emerald-600 text-white shadow-xs transition';
+        if (gastoBtn) gastoBtn.className = 'py-2.5 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 text-slate-600 hover:text-slate-900 transition';
+      }
+      populateModalCategories(type);
+    }
+
+    const deleteModal = document.getElementById('deleteModal');
+    const deleteModalContent = deleteModal ? deleteModal.querySelector('div') : null;
+
+    window.promptDeleteTransaction = function(id) {
+      const item = transactions.find(t => t.id === id);
+      if (!item || !deleteModal) return;
+      itemPendingDeletionId = id;
+      document.getElementById('deleteItemDescription').textContent = `"${item.concept}" por ${formatCurrency(item.amount)}`;
+
+      deleteModal.classList.remove('hidden');
+      setTimeout(() => {
+        deleteModal.classList.remove('opacity-0');
+        if (deleteModalContent) deleteModalContent.classList.remove('scale-95');
+      }, 10);
+    };
+
+    function closeDeleteModal() {
+      if (!deleteModal) return;
+      deleteModal.classList.add('opacity-0');
+      if (deleteModalContent) deleteModalContent.classList.add('scale-95');
+      setTimeout(() => {
+        deleteModal.classList.add('hidden');
+        itemPendingDeletionId = null;
+      }, 200);
+    }
+
+    window.editTransaction = function(id) {
+      openModal(id);
+    };
+
+    function prevMonth() {
+      if (selectedMonth === 0) {
+        selectedMonth = 11;
+        selectedYear--;
+      } else {
+        selectedMonth--;
+      }
+      refreshApp();
+    }
+
+    function nextMonth() {
+      if (selectedMonth === 11) {
+        selectedMonth = 0;
+        selectedYear++;
+      } else {
+        selectedMonth++;
+      }
+      refreshApp();
+    }
+
+    function updateFilterButtons(activeBtn) {
+      const filterButtons = document.querySelectorAll('.filter-type-btn');
+      filterButtons.forEach(btn => {
+        btn.className = 'filter-type-btn px-3 py-1.5 rounded-lg hover:text-slate-900';
+      });
+      if (activeBtn) {
+        activeBtn.className = 'filter-type-btn px-3 py-1.5 rounded-lg bg-white shadow-xs text-indigo-600 font-bold';
+      }
+    }
+
+    // Attach form submission safely
+    safeOn('transactionForm', 'submit', function(e) {
+      e.preventDefault();
+
+      const editId = document.getElementById('editTransactionId').value;
+      const concept = document.getElementById('conceptInput').value.trim();
+      const amount = parseFloat(document.getElementById('amountInput').value);
+      const date = document.getElementById('dateInput').value;
+      const category = document.getElementById('categoryInput').value;
+      const notes = document.getElementById('notesInput').value.trim();
+
+      if (!concept || isNaN(amount) || amount <= 0 || !date) {
+        showToast('Por favor, completa los campos requeridos', 'error');
+        return;
+      }
+
+      const [txY, txM] = date.split('-').map(Number);
+      selectedYear = txY;
+      selectedMonth = txM - 1;
+
+      const txPayload = {
+        type: currentModalType,
+        concept,
+        amount,
+        category,
+        date,
+        notes
+      };
+
+      if (editId) {
+        const index = transactions.findIndex(t => t.id === editId);
+        if (index !== -1) {
+          transactions[index] = { ...transactions[index], ...txPayload, id: editId };
+          showToast('Movimiento actualizado');
+        }
+      } else {
+        transactions.unshift({
+          id: 'tx-' + Date.now(),
+          ...txPayload
+        });
+        showToast(currentModalType === 'income' ? 'Ingreso registrado' : 'Gasto registrado');
+      }
+
+      saveTransactions();
+      refreshApp();
+      closeModal();
+    });
+
+    // PDF Export Modal & Action Handling
+    const pdfModal = document.getElementById('pdfExportModal');
+    const pdfModalContent = pdfModal ? pdfModal.querySelector('div') : null;
+
+    function openPdfModal() {
+      const monthTransactions = getTransactionsForMonth(selectedYear, selectedMonth);
+      if (monthTransactions.length === 0) {
+        showToast('No hay movimientos en este mes para exportar', 'info');
+        return;
+      }
+      const periodSubtitle = document.getElementById('pdfModalPeriodSubtitle');
+      if (periodSubtitle) {
+        periodSubtitle.textContent = `${MONTH_NAMES[selectedMonth]} ${selectedYear}`;
+      }
+      if (pdfModal) {
+        pdfModal.classList.remove('hidden');
+        setTimeout(() => {
+          pdfModal.classList.remove('opacity-0');
+          if (pdfModalContent) pdfModalContent.classList.remove('scale-95');
+        }, 10);
+      }
+    }
+
+    function closePdfModal() {
+      if (!pdfModal) return;
+      pdfModal.classList.add('opacity-0');
+      if (pdfModalContent) pdfModalContent.classList.add('scale-95');
+      setTimeout(() => {
+        pdfModal.classList.add('hidden');
+      }, 200);
+    }
+
+    async function ensureJsPdfLibrariesLoaded() {
+      if (window.jspdf && window.jspdf.jsPDF) {
+        return true;
+      }
+      return new Promise((resolve) => {
+        const s1 = document.createElement('script');
+        s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        s1.onload = () => {
+          const s2 = document.createElement('script');
+          s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+          s2.onload = () => resolve(true);
+          s2.onerror = () => resolve(false);
+          document.head.appendChild(s2);
+        };
+        s1.onerror = () => resolve(false);
+        document.head.appendChild(s1);
+      });
+    }
+
+    async function generateMonthlyPdfReport() {
+      const monthTransactions = getTransactionsForMonth(selectedYear, selectedMonth);
+      if (monthTransactions.length === 0) {
+        showToast('No hay movimientos en este mes para generar el PDF', 'info');
+        return;
+      }
+
+      const btnDirect = document.getElementById('btnExportDirectPdf');
+      const originalHtml = btnDirect ? btnDirect.innerHTML : '';
+      if (btnDirect) {
+        btnDirect.disabled = true;
+        btnDirect.innerHTML = `
+          <div class="flex items-center space-x-2 text-indigo-600 font-bold text-xs p-2">
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span>Preparando y generando PDF...</span>
+          </div>
+        `;
+      }
+
+      try {
+        await ensureJsPdfLibrariesLoaded();
+
+        const jsPDFModule = window.jspdf ? window.jspdf.jsPDF : null;
+        if (!jsPDFModule) {
+          throw new Error('Cargando alternativa...');
+        }
+
+        const doc = new jsPDFModule('p', 'mm', 'a4');
+        const pageWidth = 210;
+        const pageHeight = 297;
+        const margin = 14;
+        const contentWidth = pageWidth - (margin * 2);
+
+        let totalIncome = 0;
+        let totalExpense = 0;
+        let incomeCount = 0;
+        let expenseCount = 0;
+        const catTotals = {};
+
+        monthTransactions.forEach(t => {
+          const amt = parseFloat(t.amount || 0);
+          if (t.type === 'income') {
+            totalIncome += amt;
+            incomeCount++;
+          } else {
+            totalExpense += amt;
+            expenseCount++;
+            catTotals[t.category] = (catTotals[t.category] || 0) + amt;
+          }
+        });
+
+        const balance = totalIncome - totalExpense;
+        const savingsRate = totalIncome > 0 ? Math.round((balance / totalIncome) * 100) : 0;
+        const periodName = `${MONTH_NAMES[selectedMonth]} ${selectedYear}`;
+
+        function formatPdfCurrency(val) {
+          return new Intl.NumberFormat('es-ES', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          }).format(val) + ' €';
+        }
+
+        // Header
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(margin, 12, contentWidth, 20, 3, 3, 'FD');
+
+        doc.setFillColor(79, 70, 229);
+        doc.roundedRect(margin + 4, 15.5, 13, 13, 2.5, 2.5, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('CH', margin + 10.5, 24, { align: 'center' });
+
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text('Cuentas del Hogar', margin + 20, 21);
+
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text('Control de Ingresos, Gastos y Ahorro', margin + 20, 27);
+
+        doc.setTextColor(79, 70, 229);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text(periodName.toUpperCase(), pageWidth - margin - 5, 21, { align: 'right' });
+
+        doc.setTextColor(148, 163, 184);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.text(`Generado el ${new Date().toLocaleDateString('es-ES')}`, pageWidth - margin - 5, 27, { align: 'right' });
+
+        // KPI Cards
+        const cardY = 36;
+        const cardH = 22;
+        const cardGap = 4;
+        const cardW = (contentWidth - (cardGap * 2)) / 3;
+
+        // Ingresos
+        doc.setFillColor(240, 253, 244);
+        doc.setDrawColor(187, 247, 208);
+        doc.roundedRect(margin, cardY, cardW, cardH, 2.5, 2.5, 'FD');
+        doc.setTextColor(22, 101, 52);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text('INGRESOS TOTALES', margin + 4, cardY + 5.5);
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(12.5);
+        doc.text(formatPdfCurrency(totalIncome), margin + 4, cardY + 13.5);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.text(`${incomeCount} entradas registradas`, margin + 4, cardY + 18.5);
+
+        // Gastos
+        const card2X = margin + cardW + cardGap;
+        doc.setFillColor(255, 241, 242);
+        doc.setDrawColor(254, 205, 211);
+        doc.roundedRect(card2X, cardY, cardW, cardH, 2.5, 2.5, 'FD');
+        doc.setTextColor(159, 18, 57);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text('GASTOS TOTALES', card2X + 4, cardY + 5.5);
+        doc.setTextColor(15, 23, 42);
+        doc.setFontSize(12.5);
+        doc.text(formatPdfCurrency(totalExpense), card2X + 4, cardY + 13.5);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.text(`${expenseCount} compras o pagos`, card2X + 4, cardY + 18.5);
+
+        // Ahorro
+        const card3X = card2X + cardW + cardGap;
+        const isPositive = balance >= 0;
+        doc.setFillColor(isPositive ? 238 : 255, isPositive ? 242 : 241, isPositive ? 255 : 242);
+        doc.setDrawColor(isPositive ? 199 : 254, isPositive ? 210 : 205, isPositive ? 254 : 211);
+        doc.roundedRect(card3X, cardY, cardW, cardH, 2.5, 2.5, 'FD');
+        doc.setTextColor(isPositive ? 67 : 159, isPositive ? 56 : 18, isPositive ? 202 : 57);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text(isPositive ? 'AHORRO DEL MES' : 'DÉFICIT DEL MES', card3X + 4, cardY + 5.5);
+        doc.setTextColor(isPositive ? 5 : 225, isPositive ? 150 : 29, isPositive ? 105 : 72);
+        doc.setFontSize(12.5);
+        doc.text(formatPdfCurrency(balance), card3X + 4, cardY + 13.5);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.text(`Tasa de ahorro: ${savingsRate}%`, card3X + 4, cardY + 18.5);
+
+        // Chart & Category Breakdown
+        const chartBlockY = 62;
+        const chartBlockH = 46;
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(margin, chartBlockY, contentWidth, chartBlockH, 2.5, 2.5, 'FD');
+
+        if (donutChartInstance && expenseCount > 0) {
+          try {
+            const chartDataUrl = donutChartInstance.toBase64Image('image/png', 1.0);
+            doc.addImage(chartDataUrl, 'PNG', margin + 4, chartBlockY + 3, 40, 40);
+          } catch (e) {
+            console.warn('Canvas render warn:', e);
+          }
+        }
+
+        const breakdownX = margin + 48;
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.text('Distribución de Gastos por Categoría', breakdownX, chartBlockY + 7);
+
+        const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+
+        if (sortedCats.length === 0) {
+          doc.setTextColor(148, 163, 184);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          doc.text('No hay gastos registrados en este período.', breakdownX, chartBlockY + 18);
+        } else {
+          sortedCats.slice(0, 6).forEach(([catId, amount], idx) => {
+            const meta = getCategoryMeta('expense', catId);
+            const pct = totalExpense > 0 ? ((amount / totalExpense) * 100).toFixed(1) : 0;
+            const colX = (idx < 3) ? breakdownX : breakdownX + 68;
+            const currentLineY = chartBlockY + 13 + ((idx % 3) * 10);
+
+            doc.setFillColor(meta.color || '#6366f1');
+            doc.circle(colX + 2, currentLineY - 1, 1.6, 'F');
+
+            doc.setTextColor(51, 65, 85);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            const safeName = meta.name.length > 20 ? meta.name.substring(0, 18) + '...' : meta.name;
+            doc.text(safeName, colX + 6, currentLineY);
+
+            doc.setTextColor(100, 116, 139);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.text(`${formatPdfCurrency(amount)} (${pct}%)`, colX + 6, currentLineY + 4);
+          });
+        }
+
+        // Table
+        const sortedTxs = [...monthTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+        const tableBody = sortedTxs.map(t => {
+          const meta = getCategoryMeta(t.type, t.category);
+          const isInc = t.type === 'income';
+          const sign = isInc ? '+ ' : '- ';
+          return [
+            formatDateSpanish(t.date),
+            t.notes ? `${t.concept} (${t.notes})` : t.concept,
+            meta.name,
+            isInc ? 'Ingreso' : 'Gasto',
+            sign + formatPdfCurrency(parseFloat(t.amount))
+          ];
+        });
+
+        if (typeof doc.autoTable === 'function') {
+          doc.autoTable({
+            startY: chartBlockY + chartBlockH + 6,
+            head: [['Fecha', 'Concepto', 'Categoría', 'Tipo', 'Importe']],
+            body: tableBody,
+            theme: 'grid',
+            margin: { left: margin, right: margin, bottom: 15 },
+            headStyles: {
+              fillColor: [30, 41, 59],
+              textColor: [255, 255, 255],
+              fontStyle: 'bold',
+              fontSize: 8,
+              halign: 'left'
+            },
+            styles: {
+              font: 'helvetica',
+              fontSize: 8,
+              cellPadding: 2.8,
+              valign: 'middle',
+              textColor: [51, 65, 85],
+              lineColor: [241, 245, 249],
+              lineWidth: 0.2
+            },
+            columnStyles: {
+              0: { cellWidth: 22, halign: 'center' },
+              1: { cellWidth: 64 },
+              2: { cellWidth: 48 },
+              3: { cellWidth: 20, halign: 'center' },
+              4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
+            },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+            didParseCell: function(data) {
+              if (data.section === 'body') {
+                const row = sortedTxs[data.row.index];
+                if (data.column.index === 3) {
+                  data.cell.styles.textColor = row.type === 'income' ? [5, 150, 105] : [225, 29, 72];
+                  data.cell.styles.fontStyle = 'bold';
+                }
+                if (data.column.index === 4) {
+                  data.cell.styles.textColor = row.type === 'income' ? [5, 150, 105] : [15, 23, 42];
+                }
+              }
+            },
+            didDrawPage: function(data) {
+              doc.setTextColor(148, 163, 184);
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(7.5);
+              doc.text('Cuentas del Hogar • Finanzas Familiares', margin, pageHeight - 8);
+              doc.text(`Página ${data.pageNumber}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+            }
+          });
+        }
+
+        const fileName = `cuentas_hogar_${MONTH_NAMES[selectedMonth].toLowerCase()}_${selectedYear}.pdf`;
+        doc.save(fileName);
+        showToast('¡PDF descargado con éxito!');
+        closePdfModal();
+
+      } catch (err) {
+        console.error('Error generando PDF:', err);
+        showToast('Abriendo opción de guardado nativo...', 'info');
+        setTimeout(() => window.print(), 300);
+      } finally {
+        if (btnDirect) {
+          btnDirect.disabled = false;
+          btnDirect.innerHTML = originalHtml;
+        }
+      }
+    }
+
+    // Sync Modal controls
+    const syncModal = document.getElementById('syncModal');
+    const syncModalContent = syncModal ? syncModal.querySelector('div') : null;
+
+    function openSyncModal() {
+      if (!syncModal) return;
+      const roomInput = document.getElementById('roomCodeInput');
+      if (roomInput) roomInput.value = currentRoomCode;
+      syncModal.classList.remove('hidden');
+      setTimeout(() => {
+        syncModal.classList.remove('opacity-0');
+        if (syncModalContent) syncModalContent.classList.remove('scale-95');
+      }, 10);
+    }
+
+    function closeSyncModal() {
+      if (!syncModal) return;
+      syncModal.classList.add('opacity-0');
+      if (syncModalContent) syncModalContent.classList.add('scale-95');
+      setTimeout(() => {
+        syncModal.classList.add('hidden');
+      }, 200);
+    }
+
+    function copyWhatsAppShareLink() {
+      const currentUrl = window.location.origin + window.location.pathname;
+      const shareUrl = `${currentUrl}?sala=${encodeURIComponent(currentRoomCode)}`;
+      
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          showToast('¡Enlace de WhatsApp copiado!');
+        });
+      } else {
+        const tempInput = document.createElement('input');
+        tempInput.value = shareUrl;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try {
+          document.execCommand('copy');
+          showToast('¡Enlace copiado al portapapeles!');
+        } catch (err) {
+          prompt('Copia este enlace para enviarlo por WhatsApp:', shareUrl);
+        }
+        document.body.removeChild(tempInput);
+      }
+    }
+
+    function downloadJsonBackup() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(transactions, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `respaldo_cuentas_${currentRoomCode}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('Copia de seguridad descargada');
+    }
+
+    function restoreJsonBackup(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (Array.isArray(parsed)) {
+            transactions = parsed;
+            saveTransactions(true);
+            refreshApp();
+            showToast('¡Datos restaurados y sincronizados!');
+            closeSyncModal();
+          } else {
+            showToast('Formato JSON no válido', 'error');
+          }
+        } catch(err) {
+          showToast('Error al leer el archivo JSON', 'error');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Attach listeners
+    safeOn('openSyncModalBtn', 'click', openSyncModal);
+    safeOn('closeSyncModalBtn', 'click', closeSyncModal);
+    safeOn('closeSyncModalFooterBtn', 'click', closeSyncModal);
+    safeOn('shareWhatsAppBtn', 'click', copyWhatsAppShareLink);
+    safeOn('downloadBackupBtn', 'click', downloadJsonBackup);
+    safeOn('restoreBackupInput', 'change', restoreJsonBackup);
+
+    safeOn('changeRoomBtn', 'click', () => {
+      const input = document.getElementById('roomCodeInput');
+      if (input && input.value.trim()) {
+        const newRoom = input.value.trim();
+        bindGunRoom(newRoom);
+        showToast(`Conectado a la sala: ${newRoom}`);
+        closeSyncModal();
+      }
+    });
+
+    safeOn('openNewModalBtn', 'click', () => openModal());
+    safeOn('addFirstTransactionBtn', 'click', () => openModal());
+    safeOn('closeModalBtn', 'click', closeModal);
+    safeOn('cancelModalBtn', 'click', closeModal);
+    safeOn('typeGastoBtn', 'click', () => setModalType('expense'));
+    safeOn('typeIngresoBtn', 'click', () => setModalType('income'));
+    safeOn('categoryInput', 'change', (e) => updateCategoryHint(currentModalType, e.target.value));
+
+    safeOn('prevMonthBtn', 'click', prevMonth);
+    safeOn('nextMonthBtn', 'click', nextMonth);
+    safeOn('prevMonthBtnMobile', 'click', prevMonth);
+    safeOn('nextMonthBtnMobile', 'click', nextMonth);
+
+    safeOn('filterAll', 'click', function() {
+      currentFilterType = 'all';
+      updateFilterButtons(this);
+      renderTable(getTransactionsForMonth(selectedYear, selectedMonth));
+    });
+    safeOn('filterIncome', 'click', function() {
+      currentFilterType = 'income';
+      updateFilterButtons(this);
+      renderTable(getTransactionsForMonth(selectedYear, selectedMonth));
+    });
+    safeOn('filterExpense', 'click', function() {
+      currentFilterType = 'expense';
+      updateFilterButtons(this);
+      renderTable(getTransactionsForMonth(selectedYear, selectedMonth));
+    });
+
+    safeOn('categoryFilterSelect', 'change', function(e) {
+      currentFilterCategory = e.target.value;
+      renderTable(getTransactionsForMonth(selectedYear, selectedMonth));
+    });
+
+    safeOn('confirmDeleteBtn', 'click', () => {
+      if (!itemPendingDeletionId) return;
+      transactions = transactions.filter(t => t.id !== itemPendingDeletionId);
+      saveTransactions();
+      closeDeleteModal();
+      showToast('Movimiento eliminado');
+      refreshApp();
+    });
+    safeOn('cancelDeleteBtn', 'click', closeDeleteModal);
+
+    safeOn('downloadPdfBtn', 'click', openPdfModal);
+    safeOn('closePdfModalBtn', 'click', closePdfModal);
+    safeOn('closePdfModalFooterBtn', 'click', closePdfModal);
+    safeOn('btnExportDirectPdf', 'click', generateMonthlyPdfReport);
+    safeOn('btnExportPrintPdf', 'click', () => {
+      closePdfModal();
+      showToast('Abriendo ventana de impresión...', 'info');
+      setTimeout(() => window.print(), 350);
+    });
+
+    safeOn(modal, 'click', (e) => { if (e.target === modal) closeModal(); });
+    safeOn(deleteModal, 'click', (e) => { if (e.target === deleteModal) closeDeleteModal(); });
+    safeOn(pdfModal, 'click', (e) => { if (e.target === pdfModal) closePdfModal(); });
+    safeOn(syncModal, 'click', (e) => { if (e.target === syncModal) closeSyncModal(); });
+
+    // Initialize application on window load
+    window.addEventListener('load', () => {
+      loadTransactions();
+      initGunSync();
+      refreshApp();
+    });
+  </script>
+</body>
+</html>
