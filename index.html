@@ -11,8 +11,11 @@
   <!-- jsPDF & jsPDF-AutoTable CDNs for vector PDF generation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-  <!-- Gun.js Real-time Multi-user Sync -->
-  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+  
+  <!-- Firebase SDKs (v9 Compat mode for direct script inclusion) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
   <!-- Google Fonts: Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com">
@@ -95,7 +98,7 @@
       <div class="flex items-center space-x-2 sm:space-x-3">
         <!-- Multi-user Sync Button -->
         <button type="button" id="openSyncModalBtn" title="Sincronización Multiusuario" class="flex items-center space-x-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="syncDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span id="roomStatusBadge" class="hidden sm:inline">Sincronizado</span>
         </button>
 
@@ -451,7 +454,7 @@
           </div>
           <div>
             <h3 class="text-base font-bold text-slate-900 leading-snug">Sincronización Multiusuario</h3>
-            <p id="syncLiveText" class="text-xs text-slate-500 font-medium">Conectado en tiempo real</p>
+            <p id="syncLiveText" class="text-xs text-slate-500 font-medium">Conectado con Firebase</p>
           </div>
         </div>
         <button type="button" id="closeSyncModalBtn" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition">
@@ -469,7 +472,7 @@
               Unirse
             </button>
           </div>
-          <p class="text-[11px] text-slate-400 mt-1">Usa la misma clave en ambos teléfonos para ver los mismos datos al instante.</p>
+          <p class="text-[11px] text-slate-400 mt-1">Usa la misma clave en ambos teléfonos para ver los mismos datos en tiempo real.</p>
         </div>
 
         <div class="pt-2 border-t border-slate-100">
@@ -511,7 +514,6 @@
       }
     }
 
-    // EXACT Categories as requested
     const CATEGORIES = {
       expense: [
         { id: 'hipoteca', name: 'HIPOTECA', color: '#6366f1', icon: '🏠', desc: 'Cuota mensual del préstamo hipotecario' },
@@ -540,7 +542,6 @@
       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
     ];
 
-    // Current State
     const now = new Date();
     let selectedYear = now.getFullYear();
     let selectedMonth = now.getMonth();
@@ -551,43 +552,109 @@
     let donutChartInstance = null;
     let trendChartInstance = null;
 
-    // Room Sync setup
     const urlParams = new URLSearchParams(window.location.search);
     let currentRoomCode = urlParams.get('sala') || localStorage.getItem('cuentas_hogar_room') || 'hogar-default';
 
     const STORAGE_KEY = 'cuentas_hogar_datos_v3';
-
-    const SEED_TRANSACTIONS = [
-      { id: 'seed-1', type: 'income', concept: 'Nómina', amount: 2450.00, category: 'nomina', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`, notes: 'Ingreso mensual' },
-      { id: 'seed-2', type: 'income', concept: 'Alquiler Parking', amount: 90.00, category: 'alquiler_parking', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-03`, notes: 'Cochera' },
-      { id: 'seed-3', type: 'income', concept: 'Ayudas Paula', amount: 200.00, category: 'ayudas_paula', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-04`, notes: 'Consejería' },
-      { id: 'seed-4', type: 'income', concept: 'Ana Hipoteca', amount: 340.00, category: 'ana_hipoteca', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-05`, notes: 'Parte proporcional' },
-      { id: 'seed-5', type: 'expense', concept: 'Cuota Préstamo Hipotecario', amount: 680.00, category: 'hipoteca', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-02`, notes: 'Mensualidad fija' },
-      { id: 'seed-6', type: 'expense', concept: 'Factura Electricidad y Gas', amount: 95.50, category: 'gastos_casa', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-03`, notes: 'Luz y Gas' },
-      { id: 'seed-7', type: 'expense', concept: 'Recibo Agua ASTOSAM', amount: 32.10, category: 'gastos_casa', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-04`, notes: 'Agua' },
-      { id: 'seed-8', type: 'expense', concept: 'Gasolina Repsol', amount: 70.00, category: 'gastos_coche', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-06`, notes: 'Depósito coche' },
-      { id: 'seed-9', type: 'expense', concept: 'Sesión Logopeda Paula', amount: 120.00, category: 'educacion_formacion', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-05`, notes: 'Terapia' },
-      { id: 'seed-10', type: 'expense', concept: 'Colegio: Fútbol JZS y Rítmica', amount: 75.00, category: 'educacion_formacion', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-06`, notes: 'Actividades escolares' },
-      { id: 'seed-11', type: 'expense', concept: 'Traspaso Plan Pensiones', amount: 150.00, category: 'pension_seguros', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-04`, notes: 'Aportación' },
-      { id: 'seed-12', type: 'expense', concept: 'Compra Supermercado Semanal', amount: 165.40, category: 'supermercados_comida', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-07`, notes: 'Alimentación' },
-      { id: 'seed-13', type: 'expense', concept: 'Cena Restaurante y Salida', amount: 64.00, category: 'ocio_entretenimiento', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-08`, notes: 'Fin de semana' },
-      { id: 'seed-14', type: 'expense', concept: 'Farmacia medicamentos', amount: 24.50, category: 'salud_farmacia', date: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-08`, notes: 'Botiquín' }
-    ];
-
     let transactions = [];
+
+    // --- FIREBASE INITIALIZATION ---
+    // Shared public database for real-time synchronization
+    const firebaseConfig = {
+      databaseURL: "https://cuentas-hogar-default-rtdb.europe-west1.firebasedatabase.app"
+    };
+
+    let dbRef = null;
+    let isRemoteUpdate = false;
+
+    function initFirebaseSync() {
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+        }
+        bindFirebaseRoom(currentRoomCode);
+      } catch (e) {
+        console.warn('Error inicializando Firebase:', e);
+        updateRoomStatus('Sin conexión', false);
+      }
+    }
+
+    function bindFirebaseRoom(roomCode) {
+      currentRoomCode = roomCode;
+      localStorage.setItem('cuentas_hogar_room', currentRoomCode);
+      
+      const roomInput = document.getElementById('roomCodeInput');
+      if (roomInput) roomInput.value = currentRoomCode;
+
+      if (dbRef) {
+        dbRef.off(); // Detach previous listeners
+      }
+
+      dbRef = firebase.database().ref('salas/' + currentRoomCode);
+
+      // Listen for changes in Realtime Database
+      dbRef.on('value', (snapshot) => {
+        const remoteData = snapshot.val();
+        if (remoteData && Array.isArray(remoteData.data)) {
+          const remoteList = remoteData.data;
+          const currentStr = JSON.stringify(transactions);
+          const remoteStr = JSON.stringify(remoteList);
+
+          if (currentStr !== remoteStr) {
+            isRemoteUpdate = true;
+            transactions = remoteList;
+            localStorage.setItem(STORAGE_KEY, remoteStr);
+            refreshApp();
+            showToast('Datos sincronizados en tiempo real', 'info');
+            updateRoomStatus('Sincronizado', true);
+            isRemoteUpdate = false;
+          }
+        } else if (!remoteData && transactions.length > 0) {
+          // Send local data if room is empty on cloud
+          broadcastToCloud();
+        }
+        updateRoomStatus('Sincronizado', true);
+      }, (error) => {
+        console.warn('Error escuchando Firebase:', error);
+        updateRoomStatus('Error de Red', false);
+      });
+    }
+
+    function broadcastToCloud() {
+      if (!dbRef || isRemoteUpdate) return;
+      updateRoomStatus('Transmitiendo...', true);
+      dbRef.set({
+        data: transactions,
+        updatedAt: Date.now()
+      }).then(() => {
+        updateRoomStatus('Sincronizado', true);
+      }).catch((e) => {
+        console.warn('Error guardando en Firebase:', e);
+        updateRoomStatus('Modo Offline', false);
+      });
+    }
+
+    function updateRoomStatus(text, isOnline = true) {
+      const badge = document.getElementById('roomStatusBadge');
+      if (badge) badge.textContent = text;
+      const liveText = document.getElementById('syncLiveText');
+      if (liveText) liveText.textContent = text;
+      const dot = document.getElementById('syncDot');
+      if (dot) {
+        dot.className = isOnline 
+          ? 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse' 
+          : 'w-2 h-2 rounded-full bg-amber-500';
+      }
+    }
 
     function loadTransactions() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
           transactions = JSON.parse(stored);
-        } else {
-          transactions = SEED_TRANSACTIONS;
-          saveTransactions(false);
         }
       } catch (e) {
-        console.error('Error cargando almacenamiento:', e);
-        transactions = SEED_TRANSACTIONS;
+        console.error('Error cargando almacenamiento local:', e);
       }
     }
 
@@ -595,89 +662,11 @@
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
       } catch (e) {
-        console.error('Error guardando en almacenamiento:', e);
+        console.error('Error guardando en local:', e);
       }
       if (broadcast) {
         broadcastToCloud();
       }
-    }
-
-    // --- GUN.JS REAL-TIME SYNC SETUP ---
-    let gun = null;
-    let gunNode = null;
-
-    function initGunSync() {
-      try {
-        if (typeof Gun !== 'undefined') {
-          gun = Gun({
-            peers: [
-              'https://gun-manhattan.herokuapp.com/gun',
-              'https://peer.wallie.io/gun'
-            ],
-            localStorage: false
-          });
-          bindGunRoom(currentRoomCode);
-        }
-      } catch (e) {
-        console.warn('Gun sync no disponible o en modo sin conexión:', e);
-      }
-    }
-
-    function bindGunRoom(roomCode) {
-      if (!gun) return;
-      if (gunNode) {
-        try { gunNode.off(); } catch(e){}
-      }
-
-      currentRoomCode = roomCode;
-      localStorage.setItem('cuentas_hogar_room', currentRoomCode);
-      const roomInput = document.getElementById('roomCodeInput');
-      if (roomInput) roomInput.value = currentRoomCode;
-
-      gunNode = gun.get('cuentas_hogar_v4').get(currentRoomCode);
-
-      // Listen for updates from other device
-      gunNode.on((payload) => {
-        if (!payload || !payload.data) return;
-        try {
-          const remoteList = JSON.parse(payload.data);
-          if (Array.isArray(remoteList) && remoteList.length > 0) {
-            const currentStr = JSON.stringify(transactions);
-            const remoteStr = JSON.stringify(remoteList);
-            if (currentStr !== remoteStr) {
-              transactions = remoteList;
-              localStorage.setItem(STORAGE_KEY, remoteStr);
-              refreshApp();
-              showToast('Datos actualizados en tiempo real', 'info');
-              updateRoomStatus('Sincronizado');
-            }
-          }
-        } catch(err) {
-          console.warn('Error parseando datos remotos:', err);
-        }
-      });
-    }
-
-    function broadcastToCloud() {
-      if (!gunNode) return;
-      updateRoomStatus('Transmitiendo...');
-      try {
-        gunNode.put({
-          data: JSON.stringify(transactions),
-          timestamp: Date.now()
-        }, (ack) => {
-          updateRoomStatus('Sincronizado');
-        });
-      } catch (e) {
-        console.warn('Error emitiendo a la nube:', e);
-      }
-    }
-
-    function updateRoomStatus(text) {
-      const badge = document.getElementById('roomStatusBadge');
-      if (badge) badge.textContent = text;
-      const liveText = document.getElementById('syncLiveText');
-      if (liveText) liveText.textContent = text;
     }
 
     function formatCurrency(amount) {
@@ -1281,7 +1270,6 @@
       }
     }
 
-    // Attach form submission safely
     safeOn('transactionForm', 'submit', function(e) {
       e.preventDefault();
 
@@ -1329,7 +1317,6 @@
       closeModal();
     });
 
-    // PDF Export Modal & Action Handling
     const pdfModal = document.getElementById('pdfExportModal');
     const pdfModalContent = pdfModal ? pdfModal.querySelector('div') : null;
 
@@ -1445,7 +1432,6 @@
           }).format(val) + ' €';
         }
 
-        // Header
         doc.setFillColor(248, 250, 252);
         doc.setDrawColor(226, 232, 240);
         doc.roundedRect(margin, 12, contentWidth, 20, 3, 3, 'FD');
@@ -1477,13 +1463,11 @@
         doc.setFontSize(7.5);
         doc.text(`Generado el ${new Date().toLocaleDateString('es-ES')}`, pageWidth - margin - 5, 27, { align: 'right' });
 
-        // KPI Cards
         const cardY = 36;
         const cardH = 22;
         const cardGap = 4;
         const cardW = (contentWidth - (cardGap * 2)) / 3;
 
-        // Ingresos
         doc.setFillColor(240, 253, 244);
         doc.setDrawColor(187, 247, 208);
         doc.roundedRect(margin, cardY, cardW, cardH, 2.5, 2.5, 'FD');
@@ -1499,7 +1483,6 @@
         doc.setFontSize(7.5);
         doc.text(`${incomeCount} entradas registradas`, margin + 4, cardY + 18.5);
 
-        // Gastos
         const card2X = margin + cardW + cardGap;
         doc.setFillColor(255, 241, 242);
         doc.setDrawColor(254, 205, 211);
@@ -1516,7 +1499,6 @@
         doc.setFontSize(7.5);
         doc.text(`${expenseCount} compras o pagos`, card2X + 4, cardY + 18.5);
 
-        // Ahorro
         const card3X = card2X + cardW + cardGap;
         const isPositive = balance >= 0;
         doc.setFillColor(isPositive ? 238 : 255, isPositive ? 242 : 241, isPositive ? 255 : 242);
@@ -1534,7 +1516,6 @@
         doc.setFontSize(7.5);
         doc.text(`Tasa de ahorro: ${savingsRate}%`, card3X + 4, cardY + 18.5);
 
-        // Chart & Category Breakdown
         const chartBlockY = 62;
         const chartBlockH = 46;
         doc.setFillColor(255, 255, 255);
@@ -1586,7 +1567,6 @@
           });
         }
 
-        // Table
         const sortedTxs = [...monthTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
         const tableBody = sortedTxs.map(t => {
           const meta = getCategoryMeta(t.type, t.category);
@@ -1671,7 +1651,6 @@
       }
     }
 
-    // Sync Modal controls
     const syncModal = document.getElementById('syncModal');
     const syncModalContent = syncModal ? syncModal.querySelector('div') : null;
 
@@ -1752,7 +1731,6 @@
       reader.readAsText(file);
     }
 
-    // Attach listeners
     safeOn('openSyncModalBtn', 'click', openSyncModal);
     safeOn('closeSyncModalBtn', 'click', closeSyncModal);
     safeOn('closeSyncModalFooterBtn', 'click', closeSyncModal);
@@ -1764,7 +1742,7 @@
       const input = document.getElementById('roomCodeInput');
       if (input && input.value.trim()) {
         const newRoom = input.value.trim();
-        bindGunRoom(newRoom);
+        bindFirebaseRoom(newRoom);
         showToast(`Conectado a la sala: ${newRoom}`);
         closeSyncModal();
       }
@@ -1832,7 +1810,7 @@
     // Initialize application on window load
     window.addEventListener('load', () => {
       loadTransactions();
-      initGunSync();
+      initFirebaseSync();
       refreshApp();
     });
   </script>
